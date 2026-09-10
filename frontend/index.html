@@ -326,8 +326,14 @@
   <div class="sidebar-footer">
     <div class="ibm-model-info">
       <span class="ibm-dot" id="ibmDot"></span>
-      <b>IBM Granite</b><br/>
+      <b>Gemini AI</b><br/>
       <span id="ibmStatusText">Checking connection…</span>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px" id="loggedInUser"></div>
+      <button class="btn btn-outline" style="width:100%;font-size:0.8rem;padding:7px" onclick="logout()">
+        🚪 Logout
+      </button>
     </div>
   </div>
 </nav>
@@ -361,6 +367,11 @@
     <div class="topbar">
       <h2>👥 Consumer Analysis</h2>
       <div class="topbar-actions">
+        <input class="chat-input" id="consumerSearch" type="text"
+          placeholder="🔍 Search by Consumer ID or Meter ID..."
+          style="width:260px;padding:8px 12px"
+          oninput="searchConsumers()"
+        />
         <select id="riskFilter" class="chat-input" style="width:160px;padding:8px 10px" onchange="filterConsumers()">
           <option value="">All Risk Levels</option>
           <option value="High Risk">High Risk</option>
@@ -504,17 +515,27 @@ let G = {
   charts: {},
   consumerPage: 1,
   riskFilter: '',
+  allConsumers: [],   // full list for client-side search
 };
 
 /* ───── API helpers ─────────────────────────────────────────────────────── */
 const API = {
   base: '',
-  get: (path) => fetch(API.base + path).then(r => r.json()),
+  get: (path) => fetch(API.base + path).then(r => {
+    if (r.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
+    return r.json();
+  }),
   post: (path, body) => fetch(API.base + path, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(body),
-  }).then(r => r.json()),
-  postForm: (path, form) => fetch(API.base + path, { method: 'POST', body: form }).then(r => r.json()),
+  }).then(r => {
+    if (r.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
+    return r.json();
+  }),
+  postForm: (path, form) => fetch(API.base + path, { method: 'POST', body: form }).then(r => {
+    if (r.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
+    return r.json();
+  }),
 };
 
 /* ───── Toast ───────────────────────────────────────────────────────────── */

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>PowerGuard AI — Login</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:-apple-system,"Segoe UI",system-ui,sans-serif;
+      background:#0f172a;
+      color:#e2e8f0;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .login-card{
+      background:#1e293b;
+      border:1px solid #334155;
+      border-radius:16px;
+      padding:48px 40px;
+      width:100%;
+      max-width:420px;
+      box-shadow:0 20px 60px rgba(0,0,0,0.5);
+    }
+    .brand{text-align:center;margin-bottom:36px}
+    .brand-icon{font-size:2.8rem;margin-bottom:10px}
+    .brand h1{font-size:1.7rem;font-weight:800;
+      background:linear-gradient(135deg,#3b82f6,#6366f1);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .brand p{color:#94a3b8;font-size:0.85rem;margin-top:4px}
+    .ibm-badge{
+      display:inline-flex;align-items:center;gap:5px;
+      background:#0f62fe;color:#fff;
+      font-size:0.7rem;font-weight:700;
+      padding:3px 10px;border-radius:4px;margin-top:8px
+    }
+    .form-group{margin-bottom:20px}
+    label{display:block;font-size:0.82rem;font-weight:600;
+      color:#94a3b8;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em}
+    input{
+      width:100%;padding:12px 16px;
+      background:#273548;border:1px solid #334155;
+      border-radius:8px;color:#e2e8f0;
+      font-size:0.95rem;font-family:inherit;
+      transition:border-color 0.2s;outline:none;
+    }
+    input:focus{border-color:#3b82f6}
+    input::placeholder{color:#475569}
+    .btn-login{
+      width:100%;padding:13px;
+      background:linear-gradient(135deg,#3b82f6,#6366f1);
+      color:#fff;border:none;border-radius:8px;
+      font-size:1rem;font-weight:700;cursor:pointer;
+      transition:opacity 0.2s;margin-top:8px;
+    }
+    .btn-login:hover{opacity:0.9}
+    .btn-login:disabled{opacity:0.5;cursor:not-allowed}
+    .error-msg{
+      background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);
+      color:#f87171;border-radius:8px;padding:10px 14px;
+      font-size:0.85rem;margin-bottom:16px;display:none;
+    }
+    .hint{
+      text-align:center;margin-top:20px;
+      font-size:0.78rem;color:#475569;
+    }
+    .hint span{color:#64748b}
+    .divider{
+      border:none;border-top:1px solid #334155;
+      margin:24px 0;
+    }
+    .features{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}
+    .feature{
+      background:#273548;border-radius:8px;padding:10px 12px;
+      font-size:0.76rem;color:#94a3b8;text-align:center;
+    }
+    .feature-icon{font-size:1.1rem;margin-bottom:4px}
+    .spinner{
+      width:18px;height:18px;border:2px solid rgba(255,255,255,0.3);
+      border-top-color:#fff;border-radius:50%;
+      animation:spin 0.7s linear infinite;display:inline-block;
+      vertical-align:middle;margin-right:6px;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <h1>PowerGuard AI</h1>
+      <p>Electricity Billing Fraud Detection</p>
+      <div class="ibm-badge">IBM watsonx.ai · Gemini AI</div>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <form onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="username" placeholder="Enter username" autocomplete="username" required/>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Enter password" autocomplete="current-password" required/>
+      </div>
+      <button class="btn-login" type="submit" id="loginBtn">
+        Sign In to PowerGuard AI
+      </button>
+    </form>
+
+    <hr class="divider"/>
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🔍</div>
+        Fraud Detection
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🤖</div>
+        AI Agent
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📊</div>
+        Risk Scoring
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📄</div>
+        Reports
+      </div>
+    </div>
+
+    <div class="hint">
+      Default: <span>admin</span> / <span>powerguard123</span>
+    </div>
+  </div>
+
+  <script>
+    // If already logged in, go to dashboard
+    async function checkSession() {
+      try {
+        const r = await fetch('/api/status');
+        if (r.status === 200) window.location.href = '/';
+      } catch(e) {}
+    }
+    checkSession();
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('loginBtn');
+      const err = document.getElementById('errorMsg');
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Signing in...';
+      err.style.display = 'none';
+
+      try {
+        const resp = await fetch('/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username, password})
+        });
+        const data = await resp.json();
+        if (data.success) {
+          window.location.href = '/';
+        } else {
+          err.textContent = data.error || 'Invalid credentials.';
+          err.style.display = 'block';
+          btn.disabled = false;
+          btn.innerHTML = 'Sign In to PowerGuard AI';
+        }
+      } catch(e) {
+        err.textContent = 'Connection error. Please try again.';
+        err.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = 'Sign In to PowerGuard AI';
+      }
+    }
+  </script>
+</body>
+</html>

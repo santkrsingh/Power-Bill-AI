@@ -11,9 +11,10 @@ import dataclasses
 from pathlib import Path
 from functools import lru_cache
 
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, session, redirect, url_for
 from flask_cors import CORS
 from dotenv import load_dotenv
+from functools import wraps
 
 # ── Load .env ──────────────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).parent / ".env")
@@ -37,6 +38,10 @@ CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "powerguard-dev-key")
 
+# ── Credentials (can override via env vars) ───────────────────────────────────
+ADMIN_USERNAME = os.getenv("APP_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("APP_PASSWORD", "powerguard123")
+
 # ── In-memory state (single session for demo) ─────────────────────────────────
 _state: dict = {
     "analyses":      [],
@@ -45,6 +50,18 @@ _state: dict = {
     "explanations":  {},
     "loaded": False,
 }
+
+
+# ── Auth decorator ────────────────────────────────────────────────────────────
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("logged_in"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Unauthorized", "redirect": "/login"}), 401
+            return redirect("/login")
+        return f(*args, **kwargs)
+    return decorated
 
 
 # ─── Helper: serialise ConsumerAnalysis → dict ───────────────────────────────
@@ -74,12 +91,37 @@ def _analysis_to_dict(a: ConsumerAnalysis) -> dict:
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 @app.route("/")
+@login_required
 def index():
     """Serve the React/HTML dashboard."""
     return send_from_directory(app.static_folder, "index.html")
 
 
+@app.route("/login")
+def login_page():
+    return send_from_directory(app.static_folder, "login.html")
+
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        session["logged_in"] = True
+        session["username"] = username
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Invalid username or password."}), 401
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"success": True})
+
+
 @app.route("/api/status")
+@login_required
 def api_status():
     import os as _os
     groq_key_present = bool(_os.getenv("GROQ_API_KEY", "").strip())
@@ -93,6 +135,7 @@ def api_status():
 
 
 @app.route("/api/load-demo", methods=["POST"])
+@login_required
 def load_demo_data():
     """Generate and load demo electricity billing data."""
     try:
@@ -120,6 +163,7 @@ def load_demo_data():
 
 
 @app.route("/api/upload", methods=["POST"])
+@login_required
 def upload_file():
     """Upload CSV/Excel billing data."""
     if "file" not in request.files:
@@ -156,6 +200,7 @@ def upload_file():
 
 
 @app.route("/api/summary")
+@login_required
 def get_summary():
     if not _state["loaded"]:
         return jsonify({"error": "No data loaded. Use /api/load-demo or /api/upload first."}), 404
@@ -163,6 +208,7 @@ def get_summary():
 
 
 @app.route("/api/consumers")
+@login_required
 def get_consumers():
     """Return paginated consumer list sorted by risk score."""
     if not _state["loaded"]:
@@ -190,6 +236,7 @@ def get_consumers():
 
 
 @app.route("/api/consumer/<consumer_id>")
+@login_required
 def get_consumer(consumer_id: str):
     """Return full analysis for a specific consumer."""
     if not _state["loaded"]:
@@ -212,6 +259,7 @@ def get_consumer(consumer_id: str):
 
 
 @app.route("/api/agent", methods=["POST"])
+@login_required
 def agent_endpoint():
     """AI Agent natural-language query endpoint."""
     if not _state["loaded"]:
@@ -238,6 +286,7 @@ def agent_endpoint():
 
 
 @app.route("/api/report/json")
+@login_required
 def download_json_report():
     """Download full investigation report as JSON."""
     if not _state["loaded"]:
@@ -264,6 +313,7 @@ def download_json_report():
 
 
 @app.route("/api/report/pdf")
+@login_required
 def download_pdf_report():
     """Download investigation report as PDF."""
     if not _state["loaded"]:
@@ -290,12 +340,14 @@ def download_pdf_report():
 
 
 @app.route("/api/langflow-workflow")
+@login_required
 def get_langflow_workflow():
     """Return Langflow workflow JSON for visual inspection."""
     return jsonify(json.loads(export_langflow_json()))
 
 
 @app.route("/api/top-risk")
+@login_required
 def top_risk():
     """Return top N consumers by risk score."""
     if not _state["loaded"]:
@@ -306,6 +358,7 @@ def top_risk():
 
 
 @app.route("/api/quality-report")
+@login_required
 def quality_report():
     return jsonify(_state.get("quality_report", {}))
 
