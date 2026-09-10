@@ -68,9 +68,12 @@ def index():
 
 @app.route("/api/status")
 def api_status():
+    import os as _os
+    groq_key_present = bool(_os.getenv("GROQ_API_KEY", "").strip())
     return jsonify({
         "status": "ok",
         "ibm_connected": ibm_available(),
+        "groq_key_present": groq_key_present,
         "data_loaded": _state["loaded"],
         "consumers_loaded": len(_state["analyses"]),
     })
