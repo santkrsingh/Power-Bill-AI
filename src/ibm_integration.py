@@ -134,14 +134,21 @@ def _build_agent_prompt(user_query: str, context_json: str) -> str:
 You help electricity distribution company investigators analyze billing data and identify suspicious consumers.
 Always be professional, factual, and never accuse — use terms like "suspicious", "anomaly", "requires investigation".
 
-Current Dataset Context (JSON summary):
+You have access to the full dataset including all consumer IDs, risk scores, risk levels, anomaly flags,
+consumption data, meter mismatches, and summary statistics. Answer any question about the data.
+
+Current Dataset (JSON):
 {context_json}
 
 User Query: {user_query}
 
-Provide a clear, helpful, concise response (3-8 sentences).
-If listing consumers, use bullet points.
-If no relevant data is available for the query, say so politely.
+Instructions:
+- Answer the question directly using the data provided above
+- If listing consumers, use bullet points with relevant details
+- For comparisons, use actual numbers from the data
+- For specific consumers, mention their risk score, level, and flags
+- Keep response clear and concise (4-10 sentences or a list)
+- Never say you cannot access the data — the full data is given above
 """
 
 
@@ -207,6 +214,32 @@ def generate_explanation(analysis: "ConsumerAnalysis") -> str:
     return _template_explanation(analysis)
 
 
+def _build_rich_context(analyses: list, summary_stats: dict) -> str:
+    """Build a rich JSON context with consumer details for LLM."""
+    consumers_data = []
+    for a in analyses:
+        consumers_data.append({
+            "consumer_id":        a.consumer_id,
+            "meter_id":           a.meter_id,
+            "risk_score":         a.risk_score,
+            "risk_level":         a.risk_level,
+            "consumer_type":      a.consumer_type,
+            "city_zone":          a.city_zone,
+            "avg_consumption":    a.avg_consumption,
+            "latest_consumption": a.latest_consumption,
+            "consumption_trend":  a.consumption_trend,
+            "anomaly_flags":      [f.code for f in a.anomaly_flags],
+            "anomaly_score":      round(a.anomaly_score, 3),
+            "mismatch_count":     a.reading_mismatch_count,
+            "mismatch_pct":       a.reading_mismatch_pct,
+            "num_bills":          a.num_bills,
+        })
+    return json.dumps({
+        "summary":   summary_stats,
+        "consumers": consumers_data,
+    }, indent=2)
+
+
 def agent_query(
     user_query: str,
     analyses: list["ConsumerAnalysis"],
@@ -214,31 +247,22 @@ def agent_query(
 ) -> str:
     """
     Process a natural-language agent query.
-    Routes deterministically first, then optionally enhances with Groq LLM.
+    Always sends to Groq LLM with full context when available.
+    Falls back to deterministic router, then generic message.
     """
-    deterministic_result = _deterministic_agent_router(user_query, analyses, summary_stats)
-
-    if deterministic_result:
-        if ibm_available():
-            try:
-                ctx = json.dumps({
-                    "summary": summary_stats,
-                    "deterministic_answer": deterministic_result[:2000],
-                }, indent=2)
-                prompt = _build_agent_prompt(user_query, ctx)
-                return _call_groq(prompt, max_tokens=600)
-            except RuntimeError as exc:
-                print(f"[Groq] agent error: {exc}")
-        return deterministic_result
-
-    # Open-ended query — send straight to LLM
+    # Always try Groq first with full rich context
     if ibm_available():
         try:
-            ctx = json.dumps(summary_stats, indent=2)
+            ctx = _build_rich_context(analyses, summary_stats)
             prompt = _build_agent_prompt(user_query, ctx)
-            return _call_groq(prompt, max_tokens=600)
+            return _call_groq(prompt, max_tokens=700)
         except RuntimeError as exc:
             print(f"[Groq] agent error: {exc}")
+
+    # Fallback to deterministic router
+    deterministic_result = _deterministic_agent_router(user_query, analyses, summary_stats)
+    if deterministic_result:
+        return deterministic_result
 
     return (
         "I couldn't process that query with the current dataset. "
