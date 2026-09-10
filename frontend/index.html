@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PowerGuard AI – Electricity Fraud Detection</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & Base ────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --surface2:  #273548;
+      --border:    #334155;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --accent:    #3b82f6;
+      --accent2:   #6366f1;
+      --green:     #22c55e;
+      --yellow:    #f59e0b;
+      --orange:    #f97316;
+      --red:       #ef4444;
+      --ibm:       #0f62fe;
+    }
+    html { font-size: 14px; scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    button { cursor: pointer; border: none; outline: none; }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    .sidebar {
+      position: fixed; top: 0; left: 0;
+      width: 240px; height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      z-index: 100; overflow-y: auto;
+    }
+    .main { margin-left: 240px; padding: 24px; min-height: 100vh; }
+    @media (max-width: 900px) {
+      .sidebar { width: 100%; height: auto; position: relative; flex-direction: row; flex-wrap: wrap; }
+      .main { margin-left: 0; }
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────── */
+    .brand {
+      padding: 20px 16px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand h1 {
+      font-size: 1.2rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .brand p { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .ibm-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--ibm); color: white;
+      font-size: 0.68rem; font-weight: 700;
+      padding: 3px 8px; border-radius: 4px; margin-top: 8px;
+    }
+    .nav-section { padding: 12px 16px 4px; font-size: 0.68rem; font-weight: 700;
+      color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 16px; color: var(--muted); font-size: 0.88rem;
+      cursor: pointer; transition: all 0.15s; border-left: 3px solid transparent;
+    }
+    .nav-item:hover { color: var(--text); background: var(--surface2); }
+    .nav-item.active { color: var(--accent); border-left-color: var(--accent);
+      background: rgba(59,130,246,0.08); }
+    .nav-item .icon { font-size: 1rem; width: 18px; text-align: center; }
+    .sidebar-footer { margin-top: auto; padding: 16px; border-top: 1px solid var(--border); }
+    .ibm-model-info { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
+    .ibm-dot { display: inline-block; width: 7px; height: 7px;
+      border-radius: 50%; background: var(--green); margin-right: 5px;
+      vertical-align: middle; }
+    .ibm-dot.off { background: var(--muted); }
+
+    /* ── Top bar ────────────────────────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px; gap: 12px; flex-wrap: wrap;
+    }
+    .topbar h2 { font-size: 1.35rem; font-weight: 700; }
+    .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 6px;
+      font-size: 0.85rem; font-weight: 600; transition: all 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-ibm { background: var(--ibm); color: white; }
+    .btn-ibm:hover { background: #0353e9; }
+    .btn-outline {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { background: var(--surface2); }
+    .btn-success { background: var(--green); color: white; }
+    .btn-danger  { background: var(--red); color: white; }
+
+    /* ── Cards ──────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px;
+    }
+    .card-title { font-size: 0.8rem; font-weight: 600;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+      margin-bottom: 6px; }
+    .card-value { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .card-sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 14px; margin-bottom: 24px;
+    }
+    .stat-card { border-left: 4px solid var(--accent); }
+    .stat-normal { border-left-color: var(--green); }
+    .stat-low    { border-left-color: var(--accent); }
+    .stat-suspicious { border-left-color: var(--yellow); }
+    .stat-high   { border-left-color: var(--red); }
+
+    /* ── Charts grid ────────────────────────────────────────────── */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px; margin-bottom: 24px;
+    }
+    .chart-container { position: relative; height: 240px; }
+
+    /* ── Table ──────────────────────────────────────────────────── */
+    .table-wrapper { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    thead th {
+      text-align: left; padding: 10px 12px;
+      font-size: 0.74rem; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    tbody tr { border-bottom: 1px solid rgba(51,65,85,0.5); transition: background 0.1s; }
+    tbody tr:hover { background: var(--surface2); }
+    td { padding: 9px 12px; }
+    .risk-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 12px;
+      font-size: 0.74rem; font-weight: 700;
+    }
+    .risk-Normal     { background: rgba(34,197,94,0.15);  color: var(--green); }
+    .risk-Low_Risk   { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .risk-Suspicious { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .risk-High_Risk  { background: rgba(239,68,68,0.15);  color: var(--red); }
+
+    /* ── Score bar ───────────────────────────────────────────────── */
+    .score-bar { width: 80px; height: 8px; border-radius: 4px;
+      background: var(--border); display: inline-block; vertical-align: middle;
+      margin-left: 6px; overflow: hidden; }
+    .score-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+
+    /* ── Consumer detail panel ───────────────────────────────────── */
+    .detail-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      z-index: 200; display: none; align-items: flex-start; justify-content: flex-end;
+    }
+    .detail-overlay.open { display: flex; }
+    .detail-panel {
+      width: min(640px, 100%); height: 100vh; background: var(--surface);
+      border-left: 1px solid var(--border); padding: 24px; overflow-y: auto;
+    }
+    .detail-close { float: right; background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px;
+      font-size: 1.1rem; cursor: pointer; }
+    .flag-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      background: var(--surface2); border-radius: 8px; padding: 12px; margin: 8px 0;
+      border-left: 4px solid var(--yellow);
+    }
+    .flag-item.high  { border-left-color: var(--red); }
+    .flag-item.medium{ border-left-color: var(--yellow); }
+    .flag-item.low   { border-left-color: var(--accent); }
+    .flag-code { font-size: 0.74rem; font-weight: 700; text-transform: uppercase;
+      color: var(--muted); }
+    .flag-desc { font-size: 0.84rem; margin-top: 2px; }
+    .detail-section { margin-top: 16px; }
+    .detail-section h4 { font-size: 0.78rem; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;
+      margin-bottom: 8px; }
+    .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .kv { background: var(--surface2); padding: 10px; border-radius: 6px; }
+    .kv-key { font-size: 0.72rem; color: var(--muted); }
+    .kv-val { font-size: 1rem; font-weight: 700; margin-top: 2px; }
+    .explanation-box {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px; font-size: 0.85rem;
+      line-height: 1.65; color: var(--text); white-space: pre-wrap;
+    }
+    .monthly-table td, .monthly-table th { padding: 6px 10px; font-size: 0.8rem; }
+
+    /* ── Agent chat ─────────────────────────────────────────────── */
+    .agent-section { margin-top: 24px; }
+    .chat-box {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; min-height: 180px; max-height: 420px;
+      overflow-y: auto; margin-bottom: 12px; font-size: 0.88rem;
+    }
+    .chat-msg { padding: 8px 12px; border-radius: 8px; margin: 6px 0; max-width: 88%; }
+    .chat-user { background: rgba(59,130,246,0.15); margin-left: auto; text-align: right; }
+    .chat-agent { background: var(--surface); border: 1px solid var(--border); white-space: pre-wrap; }
+    .chat-role { font-size: 0.7rem; font-weight: 700; color: var(--muted);
+      margin-bottom: 3px; text-transform: uppercase; }
+    .chat-input-row { display: flex; gap: 10px; }
+    .chat-input {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 14px; color: var(--text);
+      font-size: 0.88rem; font-family: inherit;
+    }
+    .chat-input:focus { outline: none; border-color: var(--accent); }
+    .quick-queries { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+    .quick-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); padding: 5px 12px; border-radius: 20px;
+      font-size: 0.76rem; cursor: pointer; transition: all 0.15s;
+    }
+    .quick-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── Workflow viewer ─────────────────────────────────────────── */
+    .workflow-nodes { display: flex; flex-direction: column; gap: 6px; }
+    .wf-node {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 16px;
+    }
+    .wf-node.ibm-node { border-color: var(--ibm); background: rgba(15,98,254,0.07); }
+    .wf-num {
+      width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+      color: white; font-weight: 700; font-size: 0.8rem;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .wf-node.ibm-node .wf-num { background: var(--ibm); }
+    .wf-label { font-weight: 600; font-size: 0.88rem; }
+    .wf-desc  { font-size: 0.77rem; color: var(--muted); }
+    .wf-ibm-badge {
+      margin-left: auto; font-size: 0.68rem; font-weight: 700;
+      background: var(--ibm); color: white; padding: 2px 8px; border-radius: 4px;
+    }
+    .wf-arrow { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 1px 0; }
+
+    /* ── Page sections ───────────────────────────────────────────── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Loading spinner ─────────────────────────────────────────── */
+    .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 40px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ───────────────────────────────────────────────────── */
+    .toast-area { position: fixed; bottom: 24px; right: 24px; z-index: 999;
+      display: flex; flex-direction: column; gap: 8px; }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 16px; font-size: 0.84rem;
+      min-width: 240px; max-width: 360px; animation: slide-in 0.3s ease;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    .toast.success { border-left: 4px solid var(--green); }
+    .toast.error   { border-left: 4px solid var(--red); }
+    .toast.info    { border-left: 4px solid var(--accent); }
+    @keyframes slide-in { from { transform: translateX(60px); opacity: 0; } }
+
+    /* ── Misc ────────────────────────────────────────────────────── */
+    .section-title { font-size: 1rem; font-weight: 700; margin-bottom: 14px; }
+    .empty-state { text-align: center; color: var(--muted); padding: 48px 0; }
+    .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .loading-full { display: flex; align-items: center; justify-content: center;
+      min-height: 300px; }
+  </style>
+</head>
+<body>
+
+<!-- ─── Sidebar ─────────────────────────────────────────────────────────── -->
+<nav class="sidebar">
+  <div class="brand">
+    <h1>⚡ PowerGuard AI</h1>
+    <p>Electricity Fraud Detection</p>
+    <div class="ibm-badge">IBM watsonx.ai</div>
+  </div>
+
+  <div class="nav-section">Navigation</div>
+  <div class="nav-item active" onclick="showPage('dashboard')">
+    <span class="icon">📊</span> Dashboard
+  </div>
+  <div class="nav-item" onclick="showPage('consumers')">
+    <span class="icon">👥</span> Consumers
+  </div>
+  <div class="nav-item" onclick="showPage('agent')">
+    <span class="icon">🤖</span> AI Agent
+  </div>
+  <div class="nav-item" onclick="showPage('workflow')">
+    <span class="icon">🔗</span> Workflow
+  </div>
+  <div class="nav-item" onclick="showPage('reports')">
+    <span class="icon">📄</span> Reports
+  </div>
+
+  <div class="nav-section">Data</div>
+  <div class="nav-item" onclick="loadDemoData()">
+    <span class="icon">⚡</span> Load Demo Data
+  </div>
+  <div class="nav-item" onclick="document.getElementById('fileInput').click()">
+    <span class="icon">📂</span> Upload CSV/Excel
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="ibm-model-info">
+      <span class="ibm-dot" id="ibmDot"></span>
+      <b>IBM Granite</b><br/>
+      <span id="ibmStatusText">Checking connection…</span>
+    </div>
+  </div>
+</nav>
+
+<input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="uploadFile(this)"/>
+
+<!-- ─── Main content ─────────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- ── Dashboard ─────────────────────────────────────────────── -->
+  <div id="page-dashboard" class="page active">
+    <div class="topbar">
+      <h2>📊 Dashboard Overview</h2>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" onclick="loadDemoData()">⚡ Load Demo Data</button>
+        <button class="btn btn-outline" onclick="refreshDashboard()">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="dashboardContent">
+      <div class="empty-state">
+        <div class="empty-icon">⚡</div>
+        <p style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">No data loaded</p>
+        <p style="color:var(--muted)">Click <b>Load Demo Data</b> to generate sample electricity bills,<br/>or upload your own CSV file.</p>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="loadDemoData()">⚡ Load Demo Dataset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Consumers ─────────────────────────────────────────────── -->
+  <div id="page-consumers" class="page">
+    <div class="topbar">
+      <h2>👥 Consumer Analysis</h2>
+      <div class="topbar-actions">
+        <select id="riskFilter" class="chat-input" style="width:160px;padding:8px 10px" onchange="filterConsumers()">
+          <option value="">All Risk Levels</option>
+          <option value="High Risk">High Risk</option>
+          <option value="Suspicious">Suspicious</option>
+          <option value="Low Risk">Low Risk</option>
+          <option value="Normal">Normal</option>
+        </select>
+        <button class="btn btn-outline" onclick="loadConsumers()">↻ Reload</button>
+      </div>
+    </div>
+    <div class="card">
+      <div id="consumersTable">
+        <div class="empty-state"><div class="empty-icon">👥</div><p>Load data to see consumers.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── AI Agent ───────────────────────────────────────────────── -->
+  <div id="page-agent" class="page">
+    <div class="topbar">
+      <h2>🤖 IBM AI Agent</h2>
+      <div class="ibm-badge" style="font-size:0.82rem;padding:6px 14px">
+        Powered by IBM Granite (watsonx.ai)
+      </div>
+    </div>
+    <div class="card agent-section">
+      <div class="section-title">Quick Queries</div>
+      <div class="quick-queries">
+        <span class="quick-btn" onclick="sendAgentQuery('Summarize the overall fraud risk in this dataset')">📊 Overall Summary</span>
+        <span class="quick-btn" onclick="sendAgentQuery('Find the top 10 suspicious consumers')">🚨 Top Suspicious</span>
+        <span class="quick-btn" onclick="sendAgentQuery('Show consumers with sudden consumption drops')">📉 Sudden Drops</span>
+        <span class="quick-btn" onclick="sendAgentQuery('Find bills where meter readings and billed units do not match')">⚠️ Meter Mismatches</span>
+        <span class="quick-btn" onclick="sendAgentQuery('Generate a fraud investigation report summary')">📄 Investigation Report</span>
+        <span class="quick-btn" onclick="sendAgentQuery('How many high risk consumers are there?')">🔴 High Risk Count</span>
+      </div>
+      <div class="chat-box" id="chatBox">
+        <div class="chat-msg chat-agent">
+          <div class="chat-role">PowerGuard AI Agent</div>
+          Welcome! I'm the PowerGuard AI Agent, powered by IBM Granite (watsonx.ai). Load a dataset and ask me anything about your electricity billing data — fraud patterns, suspicious consumers, consumption anomalies, and more.
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input class="chat-input" id="chatInput" type="text"
+          placeholder="Ask: Why is C102 flagged? / Find high risk consumers..."
+          onkeydown="if(event.key==='Enter') sendAgentQuery()" />
+        <button class="btn btn-ibm" onclick="sendAgentQuery()">Send ↗</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Workflow ───────────────────────────────────────────────── -->
+  <div id="page-workflow" class="page">
+    <div class="topbar"><h2>🔗 Langflow / IBM Orchestrate Workflow</h2></div>
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;">
+      <div class="card">
+        <div class="section-title">PowerGuard AI Processing Pipeline</div>
+        <div class="workflow-nodes" id="workflowNodes">
+          <div class="spinner"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">IBM Components</div>
+          <div style="margin-top:10px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <div style="background:var(--ibm);width:8px;height:8px;border-radius:50%"></div>
+              <div>
+                <div style="font-weight:700;font-size:0.88rem">IBM watsonx.ai</div>
+                <div style="font-size:0.76rem;color:var(--muted)">Granite 3 8B Instruct</div>
+              </div>
+            </div>
+            <ul style="font-size:0.82rem;color:var(--muted);padding-left:20px;line-height:2">
+              <li>NL fraud investigation explanations</li>
+              <li>AI Agent natural language queries</li>
+              <li>Investigation summaries</li>
+              <li>XAI reasoning output</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">IBM Orchestrate</div>
+          <ul style="font-size:0.82rem;color:var(--muted);padding-left:20px;line-height:2;margin-top:10px">
+            <li>Multi-step workflow orchestration</li>
+            <li>Agent tool routing</li>
+            <li>Periodic batch scheduling</li>
+            <li>High-risk consumer alerts</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Reports ────────────────────────────────────────────────── -->
+  <div id="page-reports" class="page">
+    <div class="topbar"><h2>📄 Investigation Reports</h2></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div class="card">
+        <div class="section-title">📑 JSON Investigation Report</div>
+        <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">
+          Full structured JSON report with all flagged consumers, anomaly details,
+          AI explanations, and investigation priorities.
+        </p>
+        <button class="btn btn-primary" onclick="downloadReport('json')">⬇ Download JSON Report</button>
+      </div>
+      <div class="card">
+        <div class="section-title">📋 PDF Investigation Report</div>
+        <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">
+          Professional PDF report with executive summary, risk tables, consumer
+          details, and IBM Granite explanations. Print-ready.
+        </p>
+        <button class="btn btn-ibm" onclick="downloadReport('pdf')">⬇ Download PDF Report</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <div class="section-title">Data Quality Report</div>
+      <div id="qualityReport" style="color:var(--muted);font-size:0.85rem">
+        Load data to view quality report.
+      </div>
+    </div>
+  </div>
+
+</main><!-- /main -->
+
+<!-- ─── Consumer Detail Panel ────────────────────────────────────────────── -->
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail(event)">
+  <div class="detail-panel" id="detailPanel">
+    <button class="detail-close" onclick="closeDetailPanel()">✕</button>
+    <div id="detailContent"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ─── Toast area ───────────────────────────────────────────────────────── -->
+<div class="toast-area" id="toastArea"></div>
+
+<!-- ─── Scripts ─────────────────────────────────────────────────────────── -->
+<script>
+/* ───── State ───────────────────────────────────────────────────────────── */
+let G = {
+  loaded: false,
+  summary: {},
+  charts: {},
+  consumerPage: 1,
+  riskFilter: '',
+};
+
+/* ───── API helpers ─────────────────────────────────────────────────────── */
+const API = {
+  base: '',
+  get: (path) => fetch(API.base + path).then(r => r.json()),
+  post: (path, body) => fetch(API.base + path, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  }).then(r => r.json()),
+  postForm: (path, form) => fetch(API.base + path, { method: 'POST', body: form }).then(r => r.json()),
+};
+
+/* ───── Toast ───────────────────────────────────────────────────────────── */
+function toast(msg, type = 'info', dur = 4000) {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toastArea').appendChild(el);
+  setTimeout(() => el.remove(), dur);
+}
+
+/* ───── Navigation ──────────────────────────────────────────────────────── */
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  event?.currentTarget?.classList.add('active');
+  // Lazy load
+  if (id === 'consumers' && G.loaded) loadConsumers();
+  if (id === 'workflow') loadWorkflow();
+  if (id === 'reports') loadQualityReport();
+}
+
+/* ───── IBM status ──────────────────────────────────────────────────────── */
+async function checkIBMStatus() {
+  try {
+    const s = await API.get('/api/status');
+    const dot = document.getElementById('ibmDot');
+    const txt = document.getElementById('ibmStatusText');
+    if (s.ibm_connected) {
+      dot.classList.remove('off');
+      txt.textContent = 'IBM Granite connected';
+    } else {
+      dot.classList.add('off');
+      txt.textContent = 'Template mode (no API key)';
+    }
+  } catch(e) {
+    document.getElementById('ibmDot').classList.add('off');
+    document.getElementById('ibmStatusText').textContent = 'Backend offline';
+  }
+}
+
+/* ───── Load demo data ──────────────────────────────────────────────────── */
+async function loadDemoData() {
+  toast('Generating demo dataset and running analysis…', 'info', 8000);
+  showLoading('dashboardContent');
+  try {
+    const r = await API.post('/api/load-demo', {});
+    if (!r.success) { toast(r.error, 'error'); return; }
+    G.loaded = true;
+    G.summary = r.summary;
+    toast(`✅ Loaded ${r.summary.total_consumers} consumers, ${r.summary.total_bills} bills.`, 'success');
+    renderDashboard(r.summary);
+  } catch(e) {
+    toast('Failed to load demo data: ' + e.message, 'error');
+    showLoading('dashboardContent', false);
+  }
+}
+
+/* ───── Upload CSV/Excel ────────────────────────────────────────────────── */
+async function uploadFile(input) {
+  const f = input.files[0]; if (!f) return;
+  const form = new FormData(); form.append('file', f);
+  toast(`Uploading ${f.name} and running analysis…`, 'info', 8000);
+  showLoading('dashboardContent');
+  try {
+    const r = await API.postForm('/api/upload', form);
+    if (!r.success) { toast(r.error, 'error'); return; }
+    G.loaded = true;
+    G.summary = r.summary;
+    if (r.warnings?.length) r.warnings.forEach(w => toast(w, 'info'));
+    toast(`✅ Processed ${r.summary.total_consumers} consumers.`, 'success');
+    renderDashboard(r.summary);
+    showPage('dashboard');
+  } catch(e) {
+    toast('Upload failed: ' + e.message, 'error');
+  }
+  input.value = '';
+}
+
+/* ───── Dashboard rendering ─────────────────────────────────────────────── */
+function showLoading(id, show=true) {
+  if (show) document.getElementById(id).innerHTML = '<div class="loading-full"><div class="spinner"></div></div>';
+}
+
+async function refreshDashboard() {
+  if (!G.loaded) { toast('No data loaded.', 'info'); return; }
+  const s = await API.get('/api/summary');
+  G.summary = s;
+  renderDashboard(s);
+}
+
+function renderDashboard(s) {
+  const el = document.getElementById('dashboardContent');
+  el.innerHTML = `
+    <div class="stat-grid">
+      ${statCard('Total Consumers', s.total_consumers, 'Analysed this session', '')}
+      ${statCard('Total Bills', s.total_bills, 'Billing records processed', '')}
+      ${statCard('Normal', s.normal_consumers, 'Score 0–30', 'stat-normal')}
+      ${statCard('Low Risk', s.low_risk_consumers, 'Score 31–60', 'stat-low')}
+      ${statCard('Suspicious', s.suspicious_consumers, 'Score 61–80', 'stat-suspicious')}
+      ${statCard('High Risk', s.high_risk_consumers, 'Score 81–100', 'stat-high')}
+      ${statCard('Meter Mismatches', s.mismatch_consumers, 'Reading ≠ billed units', 'stat-high')}
+      ${statCard('Avg Risk Score', s.avg_risk_score + '/100', 'Dataset average', '')}
+    </div>
+    <div class="charts-grid">
+      <div class="card">
+        <div class="card-title">Risk Distribution</div>
+        <div class="chart-container"><canvas id="riskPieChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Top 10 High-Risk Consumers</div>
+        <div class="chart-container"><canvas id="topRiskBar"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Fraud Indicator Frequency</div>
+        <div class="chart-container"><canvas id="flagFreqChart"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">🚨 Top 10 High-Risk Consumers</div>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr>
+            <th>Consumer</th><th>Meter</th><th>Risk Score</th><th>Risk Level</th>
+            <th>Type</th><th>Zone</th><th>Key Flags</th><th>Action</th>
+          </tr></thead>
+          <tbody id="top10tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Render top 10 table
+  const top10 = s.top_10_high_risk || [];
+  const tbody = document.getElementById('top10tbody');
+  if (top10.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted)">No flagged consumers</td></tr>';
+  } else {
+    tbody.innerHTML = top10.map(c => `
+      <tr>
+        <td><b>${c.consumer_id}</b></td>
+        <td style="color:var(--muted)">${c.meter_id}</td>
+        <td>
+          <b>${c.risk_score}</b>/100
+          <span class="score-bar"><span class="score-fill" style="width:${c.risk_score}%;background:${scoreColor(c.risk_score)}"></span></span>
+        </td>
+        <td><span class="risk-badge risk-${c.risk_level.replace(' ','_')}">${c.risk_level}</span></td>
+        <td style="color:var(--muted)">${fmt(c.consumer_type)}</td>
+        <td style="color:var(--muted)">${c.city_zone}</td>
+        <td style="font-size:0.76rem;color:var(--muted)">${(c.flags||[]).join(', ') || '—'}</td>
+        <td><button class="btn btn-outline" style="padding:4px 10px;font-size:0.76rem"
+          onclick="openConsumer('${c.consumer_id}')">View</button></td>
+      </tr>`).join('');
+  }
+
+  // Charts
+  requestAnimationFrame(() => {
+    renderRiskPie(s.risk_distribution);
+    renderTopRiskBar(s.top_10_high_risk);
+    renderFlagFreq(s.flag_frequency);
+  });
+}
+
+function statCard(title, value, sub, cls) {
+  return `<div class="card stat-card ${cls}">
+    <div class="card-title">${title}</div>
+    <div class="card-value">${value}</div>
+    <div class="card-sub">${sub}</div>
+  </div>`;
+}
+
+function scoreColor(score) {
+  if (score > 80) return 'var(--red)';
+  if (score > 60) return 'var(--yellow)';
+  if (score > 30) return 'var(--accent)';
+  return 'var(--green)';
+}
+
+function fmt(s) { return s ? s.replace(/_/g,' ') : '—'; }
+
+/* ───── Charts ──────────────────────────────────────────────────────────── */
+function destroyChart(id) {
+  if (G.charts[id]) { G.charts[id].destroy(); delete G.charts[id]; }
+}
+
+function renderRiskPie(dist) {
+  destroyChart('riskPie');
+  const ctx = document.getElementById('riskPieChart');
+  if (!ctx) return;
+  G.charts['riskPie'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Normal','Low Risk','Suspicious','High Risk'],
+      datasets: [{
+        data: [dist.Normal||0, dist['Low Risk']||0, dist.Suspicious||0, dist['High Risk']||0],
+        backgroundColor: ['#22c55e','#3b82f6','#f59e0b','#ef4444'],
+        borderWidth: 0, hoverOffset: 6,
+      }],
+    },
+    options: {
+      plugins: { legend: { labels: { color:'#94a3b8', padding: 14, font:{size:12} } } },
+      cutout: '65%',
+      responsive: true, maintainAspectRatio: false,
+    },
+  });
+}
+
+function renderTopRiskBar(top10) {
+  destroyChart('topBar');
+  const ctx = document.getElementById('topRiskBar');
+  if (!ctx || !top10?.length) return;
+  G.charts['topBar'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top10.map(c => c.consumer_id),
+      datasets: [{
+        label: 'Risk Score',
+        data: top10.map(c => c.risk_score),
+        backgroundColor: top10.map(c => scoreColor(c.risk_score)),
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      scales: {
+        x: { max: 100, grid: { color:'#334155' }, ticks: { color:'#94a3b8' } },
+        y: { grid: { color:'#334155' }, ticks: { color:'#e2e8f0', font:{size:11} } },
+      },
+      plugins: { legend: { display: false } },
+      responsive: true, maintainAspectRatio: false,
+    },
+  });
+}
+
+function renderFlagFreq(freq) {
+  destroyChart('flagFreq');
+  const ctx = document.getElementById('flagFreqChart');
+  if (!ctx || !freq) return;
+  const entries = Object.entries(freq).sort((a,b) => b[1]-a[1]);
+  G.charts['flagFreq'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: entries.map(e => e[0].replace(/_/g,' ')),
+      datasets: [{
+        label: 'Consumers',
+        data: entries.map(e => e[1]),
+        backgroundColor: '#6366f1', borderRadius: 4,
+      }],
+    },
+    options: {
+      scales: {
+        x: { grid: { color:'#334155' }, ticks: { color:'#94a3b8', font:{size:10} } },
+        y: { grid: { color:'#334155' }, ticks: { color:'#94a3b8' } },
+      },
+      plugins: { legend: { display: false } },
+      responsive: true, maintainAspectRatio: false,
+    },
+  });
+}
+
+/* ───── Consumers list ──────────────────────────────────────────────────── */
+async function loadConsumers() {
+  const riskFilter = document.getElementById('riskFilter').value;
+  const container = document.getElementById('consumersTable');
+  container.innerHTML = '<div class="loading-full"><div class="spinner"></div></div>';
+  try {
+    const url = `/api/consumers?page=1&limit=50${riskFilter ? '&risk='+encodeURIComponent(riskFilter) : ''}`;
+    const r = await API.get(url);
+    if (r.error) { container.innerHTML = `<div class="empty-state"><p>${r.error}</p></div>`; return; }
+    renderConsumersTable(r);
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><p>Error: ${e.message}</p></div>`;
+  }
+}
+
+function filterConsumers() { if (G.loaded) loadConsumers(); }
+
+function renderConsumersTable(data) {
+  const { consumers, total } = data;
+  if (!consumers.length) {
+    document.getElementById('consumersTable').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">👥</div><p>No consumers match this filter.</p></div>';
+    return;
+  }
+  document.getElementById('consumersTable').innerHTML = `
+    <p style="color:var(--muted);font-size:0.82rem;margin-bottom:12px">
+      Showing ${consumers.length} of ${total} consumers
+    </p>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr>
+          <th>Consumer ID</th><th>Meter ID</th><th>Risk Score</th><th>Risk Level</th>
+          <th>Avg Units</th><th>Latest Units</th><th>Mismatches</th><th>Flags</th><th>Details</th>
+        </tr></thead>
+        <tbody>
+          ${consumers.map(c => `
+            <tr>
+              <td><b>${c.consumer_id}</b></td>
+              <td style="color:var(--muted)">${c.meter_id}</td>
+              <td>
+                <b>${c.risk_score}</b>/100
+                <span class="score-bar"><span class="score-fill"
+                  style="width:${c.risk_score}%;background:${scoreColor(c.risk_score)}"></span></span>
+              </td>
+              <td><span class="risk-badge risk-${c.risk_level.replace(' ','_')}">${c.risk_level}</span></td>
+              <td>${c.avg_consumption}</td>
+              <td>${c.latest_consumption}</td>
+              <td>${c.reading_mismatch_count} / ${c.num_bills}</td>
+              <td style="font-size:0.76rem;color:var(--muted)">${(c.anomaly_flags||[]).map(f=>f.code).join(', ')||'—'}</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:0.76rem"
+                onclick="openConsumer('${c.consumer_id}')">→ View</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/* ───── Consumer detail panel ───────────────────────────────────────────── */
+async function openConsumer(cid) {
+  document.getElementById('detailOverlay').classList.add('open');
+  document.getElementById('detailContent').innerHTML = '<div class="spinner" style="margin-top:60px"></div>';
+  try {
+    const c = await API.get(`/api/consumer/${cid}`);
+    renderConsumerDetail(c);
+  } catch(e) {
+    document.getElementById('detailContent').innerHTML = `<p style="color:var(--red)">Error: ${e.message}</p>`;
+  }
+}
+
+function closeDetail(e) {
+  if (e.target === document.getElementById('detailOverlay')) closeDetailPanel();
+}
+function closeDetailPanel() {
+  document.getElementById('detailOverlay').classList.remove('open');
+}
+
+function renderConsumerDetail(c) {
+  const flagsHtml = (c.anomaly_flags||[]).map(f => `
+    <div class="flag-item ${f.severity}">
+      <div>
+        <div class="flag-code">${f.code.replace(/_/g,' ')} • ${f.severity.toUpperCase()}</div>
+        <div class="flag-desc">${f.description}</div>
+        ${f.deviation_pct ? `<div style="font-size:0.76rem;color:var(--muted);margin-top:4px">Deviation: ${f.deviation_pct.toFixed(1)}%</div>` : ''}
+      </div>
+    </div>`).join('') || '<p style="color:var(--muted)">No anomaly flags detected.</p>';
+
+  const monthlyHtml = (c.monthly_detail||[]).map(m => `
+    <tr>
+      <td>${m.billing_month}</td>
+      <td>${m.billed_units?.toFixed(1)||'—'}</td>
+      <td style="color:${m.dev_from_mean_pct>=0?'var(--yellow)':'var(--green)'}">${m.dev_from_mean_pct?.toFixed(1)||'—'}%</td>
+      <td style="color:${m.reading_mismatch?'var(--red)':'var(--green)'}">
+        ${m.reading_mismatch ? '⚠ Yes' : '✓ OK'}</td>
+    </tr>`).join('');
+
+  document.getElementById('detailContent').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <div>
+        <h3 style="font-size:1.15rem">${c.consumer_id}</h3>
+        <span style="color:var(--muted);font-size:0.82rem">Meter: ${c.meter_id}</span>
+      </div>
+      <span class="risk-badge risk-${c.risk_level.replace(' ','_')}" style="margin-left:auto;font-size:0.9rem">
+        ${c.risk_level}
+      </span>
+    </div>
+    <div class="detail-section">
+      <h4>Risk Score</h4>
+      <div style="font-size:2.5rem;font-weight:800;color:${scoreColor(c.risk_score)}">${c.risk_score}<span style="font-size:1.2rem;color:var(--muted)">/100</span></div>
+      <div style="background:var(--border);border-radius:8px;height:12px;margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:${c.risk_score}%;background:${scoreColor(c.risk_score)};border-radius:8px;transition:width 0.5s"></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>Consumer Profile</h4>
+      <div class="kv-grid">
+        <div class="kv"><div class="kv-key">Type</div><div class="kv-val" style="font-size:0.9rem">${fmt(c.consumer_type)}</div></div>
+        <div class="kv"><div class="kv-key">Zone</div><div class="kv-val" style="font-size:0.9rem">${c.city_zone}</div></div>
+        <div class="kv"><div class="kv-key">Avg Consumption</div><div class="kv-val">${c.avg_consumption} <span style="font-size:0.78rem;color:var(--muted)">units</span></div></div>
+        <div class="kv"><div class="kv-key">Latest Consumption</div><div class="kv-val">${c.latest_consumption} <span style="font-size:0.78rem;color:var(--muted)">units</span></div></div>
+        <div class="kv"><div class="kv-key">ML Anomaly Score</div><div class="kv-val">${(c.anomaly_score*100).toFixed(1)}<span style="font-size:0.78rem;color:var(--muted)">/100</span></div></div>
+        <div class="kv"><div class="kv-key">Meter Mismatches</div><div class="kv-val" style="color:${c.reading_mismatch_count?'var(--red)':'var(--green)'}">${c.reading_mismatch_count}/${c.num_bills}</div></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>Detected Anomalies (${c.anomaly_flags?.length||0})</h4>
+      ${flagsHtml}
+    </div>
+    <div class="detail-section">
+      <h4>IBM AI Explanation</h4>
+      <div class="explanation-box">${c.explanation || 'Loading explanation…'}</div>
+    </div>
+    <div class="detail-section">
+      <h4>Monthly Billing History</h4>
+      <div class="table-wrapper">
+        <table class="monthly-table">
+          <thead><tr><th>Month</th><th>Units</th><th>Dev %</th><th>Mismatch</th></tr></thead>
+          <tbody>${monthlyHtml}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+/* ───── AI Agent ────────────────────────────────────────────────────────── */
+async function sendAgentQuery(presetQuery) {
+  if (!G.loaded) { toast('Load data first.', 'info'); return; }
+  const input = document.getElementById('chatInput');
+  const query = presetQuery || input.value.trim();
+  if (!query) return;
+  input.value = '';
+
+  const chatBox = document.getElementById('chatBox');
+  chatBox.innerHTML += `<div class="chat-msg chat-user"><div class="chat-role">You</div>${escHtml(query)}</div>`;
+  chatBox.innerHTML += `<div class="chat-msg chat-agent" id="typingMsg"><div class="chat-role">PowerGuard AI</div><span class="spinner" style="width:16px;height:16px;border-width:2px;margin:0;display:inline-block"></span></div>`;
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  try {
+    const r = await API.post('/api/agent', { query });
+    document.getElementById('typingMsg').outerHTML =
+      `<div class="chat-msg chat-agent">
+        <div class="chat-role">PowerGuard AI ${r.ibm_used ? '(IBM Granite ✓)' : '(Template)'}</div>
+        ${escHtml(r.response || r.error || 'No response.')}
+      </div>`;
+  } catch(e) {
+    document.getElementById('typingMsg').outerHTML =
+      `<div class="chat-msg chat-agent" style="border-color:var(--red)">
+        <div class="chat-role">Error</div>${escHtml(e.message)}
+      </div>`;
+  }
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\n/g,'<br/>').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
+    .replace(/^• (.+)/gm,'<span style="color:var(--muted)">•</span> $1');
+}
+
+/* ───── Workflow ────────────────────────────────────────────────────────── */
+async function loadWorkflow() {
+  try {
+    const wf = await API.get('/api/langflow-workflow');
+    const nodes = wf.nodes || [];
+    const container = document.getElementById('workflowNodes');
+    let html = '';
+    nodes.forEach((n, i) => {
+      html += `<div class="wf-node ${n.ibm_component ? 'ibm-node' : ''}">
+        <div class="wf-num">${i+1}</div>
+        <div>
+          <div class="wf-label">${n.label}</div>
+          <div class="wf-desc">${n.description}</div>
+        </div>
+        ${n.ibm_component ? '<div class="wf-ibm-badge">IBM</div>' : ''}
+      </div>`;
+      if (i < nodes.length - 1) html += `<div class="wf-arrow">↓</div>`;
+    });
+    container.innerHTML = html;
+  } catch(e) {
+    document.getElementById('workflowNodes').innerHTML =
+      '<p style="color:var(--muted)">Could not load workflow.</p>';
+  }
+}
+
+/* ───── Reports ─────────────────────────────────────────────────────────── */
+function downloadReport(type) {
+  if (!G.loaded) { toast('Load data first.', 'info'); return; }
+  toast(`Generating ${type.toUpperCase()} report…`, 'info', 5000);
+  window.open(`/api/report/${type}`, '_blank');
+}
+
+async function loadQualityReport() {
+  try {
+    const r = await API.get('/api/quality-report');
+    const el = document.getElementById('qualityReport');
+    if (!r || !r.original_rows) {
+      el.textContent = 'No data loaded yet.'; return;
+    }
+    el.innerHTML = `
+      <div class="kv-grid" style="margin-bottom:12px">
+        <div class="kv"><div class="kv-key">Original Rows</div><div class="kv-val">${r.original_rows}</div></div>
+        <div class="kv"><div class="kv-key">Clean Rows</div><div class="kv-val">${r.cleaned_rows}</div></div>
+        <div class="kv"><div class="kv-key">Rows Removed</div><div class="kv-val" style="color:${r.rows_removed?'var(--yellow)':'var(--green)'}">${r.rows_removed}</div></div>
+        <div class="kv"><div class="kv-key">Data Quality</div><div class="kv-val" style="color:${r.clean?'var(--green)':'var(--yellow)'}">${r.clean?'✓ Clean':'⚠ Issues Found'}</div></div>
+      </div>
+      ${r.issues?.length ? `<div style="font-size:0.82rem;color:var(--muted)"><b>Issues:</b><ul style="padding-left:18px;margin-top:6px">${r.issues.map(i=>`<li>${i}</li>`).join('')}</ul></div>` : ''}
+    `;
+  } catch(e) { /* ignore */ }
+}
+
+/* ───── Init ────────────────────────────────────────────────────────────── */
+window.onload = async () => {
+  checkIBMStatus();
+  setInterval(checkIBMStatus, 30000);
+  // Check if backend already has data
+  try {
+    const s = await API.get('/api/status');
+    if (s.data_loaded) {
+      G.loaded = true;
+      const summary = await API.get('/api/summary');
+      G.summary = summary;
+      renderDashboard(summary);
+    }
+  } catch(e) { /* backend not ready */ }
+};
+</script>
+</body>
+</html>

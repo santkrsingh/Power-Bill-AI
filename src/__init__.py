@@ -1,0 +1,3 @@
+"""
+PowerGuard AI – package init
+"""
