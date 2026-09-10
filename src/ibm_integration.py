@@ -1,6 +1,6 @@
 """
-PowerGuard AI – LLM Integration
-Uses Groq API for NL explanations and agent responses.
+PowerGuard AI – LLM Integration (Google Gemini)
+Uses Google Gemini 1.5 Flash for NL explanations and agent responses.
 Falls back to template-based explanations when unavailable.
 """
 
@@ -13,52 +13,50 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .analysis_engine import ConsumerAnalysis
 
-# ─── LLM client ───────────────────────────────────────────────────────────────
+# ─── Gemini client ─────────────────────────────────────────────────────────────
 
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 
-def _get_groq_key() -> str | None:
-    return os.getenv("GROQ_API_KEY", "").strip() or None
+def _get_key() -> str | None:
+    return os.getenv("GEMINI_API_KEY", "").strip() or None
 
 
 def ibm_available() -> bool:
-    return _get_groq_key() is not None
+    return _get_key() is not None
 
 
-def _call_groq(prompt: str, max_tokens: int = 600) -> str:
-    """Call Groq using requests library with proper headers."""
-    key = _get_groq_key()
+def _call_llm(prompt: str, max_tokens: int = 800) -> str:
+    """Call Google Gemini 1.5 Flash."""
+    key = _get_key()
     if not key:
-        raise RuntimeError("GROQ_API_KEY not set.")
+        raise RuntimeError("GEMINI_API_KEY not set.")
 
-    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    url = f"{GEMINI_URL}?key={key}"
     payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": max_tokens,
-        "temperature": 0.3,
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "temperature": 0.3,
+        },
     }
 
     try:
-        import requests as req_lib
-        resp = req_lib.post(
-            GROQ_API_URL,
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-                "User-Agent": "PowerGuardAI/1.0",
-            },
-            timeout=30,
-        )
+        import requests
+        resp = requests.post(url, json=payload, timeout=45)
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as exc:
-        raise RuntimeError(f"Groq call failed: {exc}") from exc
+        raise RuntimeError(f"Gemini call failed: {exc}") from exc
 
 
-# ─── Prompt builders ──────────────────────────────────────────────────────────
+# alias for backward compatibility
+def _call_groq(prompt: str, max_tokens: int = 600) -> str:
+    return _call_llm(prompt, max_tokens)
+
+
+# ─── Prompt builders ───────────────────────────────────────────────────────────
 
 def _build_explanation_prompt(analysis: "ConsumerAnalysis") -> str:
     flags_text = "\n".join(
@@ -71,9 +69,11 @@ def _build_explanation_prompt(analysis: "ConsumerAnalysis") -> str:
         last3 = analysis.monthly_detail[-3:]
         lines = []
         for m in last3:
+            bu = m.get("billed_units") or 0
+            dev = m.get("dev_from_mean_pct") or 0
             lines.append(
-                f"  {m['billing_month']}: {m['billed_units']:.1f} units "
-                f"(dev: {m['dev_from_mean_pct']:+.1f}%, mismatch: {m['reading_mismatch']})"
+                f"  {m['billing_month']}: {bu:.1f} units "
+                f"(dev: {dev:+.1f}%, mismatch: {m['reading_mismatch']})"
             )
         monthly_summary = "Last 3 months:\n" + "\n".join(lines)
 
@@ -84,8 +84,8 @@ def _build_explanation_prompt(analysis: "ConsumerAnalysis") -> str:
     )
 
     return f"""You are PowerGuard AI, an electricity fraud analyst assistant.
-Your task is to write a concise, professional investigation explanation for a consumer.
-IMPORTANT: Never state that fraud is confirmed. Use terms: potential fraud, suspicious activity, anomaly, requires investigation.
+Write a concise professional investigation note for this consumer.
+IMPORTANT: Never confirm fraud. Use terms: potential fraud, suspicious activity, anomaly, requires investigation.
 
 Consumer Details:
 - Consumer ID: {analysis.consumer_id}
@@ -105,46 +105,38 @@ Detected Anomalies:
 
 {monthly_summary}
 
-Write a 4-6 sentence professional investigation note covering:
-1. Risk classification and score
-2. Key anomalies detected
-3. Historical comparison
-4. Meter/billing observations
-5. Recommended investigation priority
-
-Begin directly with: "Consumer {analysis.consumer_id} is classified as..."
+Write 4-6 sentences covering: risk classification, key anomalies, historical comparison, meter observations, investigation priority.
+Begin with: "Consumer {analysis.consumer_id} is classified as..."
 """
 
 
 def _build_agent_prompt(user_query: str, context_json: str) -> str:
-    return f"""You are PowerGuard AI — a smart, conversational AI assistant for electricity billing fraud detection.
+    return f"""You are PowerGuard AI — a smart conversational AI assistant for electricity billing fraud detection.
 
-You have FULL access to the electricity billing dataset below. You can answer ANY question about it:
+You have FULL access to the electricity billing dataset below. Answer ANY question about it:
 - Which consumers are risky or safe
 - Comparisons between consumers
 - Zone-wise or type-wise analysis
 - Counts, averages, trends
 - Specific consumer details
-- Recommendations
-- Anything else the user asks
+- Recommendations and anything else
 
-Dataset (full details of all consumers):
+Dataset (all consumers with full details):
 {context_json}
 
 User's question: {user_query}
 
 Rules:
-- Answer naturally like a helpful AI assistant — not robotic
-- Use the actual data/numbers from the dataset above
+- Answer naturally and helpfully using actual data/numbers
 - Use bullet points when listing multiple items
-- Never say "I don't have access" or "I can't answer" — you have full data above
+- Never say "I don't have access" — full data is above
 - Never confirm fraud — say "suspicious", "anomaly", "requires investigation"
-- If user asks in Hindi or mixed language, reply in the same language
-- Be conversational, helpful, and precise
+- If user writes in Hindi or mixed language, reply in same language
+- Be conversational, precise and concise
 """
 
 
-# ─── Template-based fallback (no LLM required) ────────────────────────────────
+# ─── Template fallback ─────────────────────────────────────────────────────────
 
 def _template_explanation(analysis: "ConsumerAnalysis") -> str:
     flag_names = [f.code.replace("_", " ").title() for f in analysis.anomaly_flags]
@@ -153,7 +145,7 @@ def _template_explanation(analysis: "ConsumerAnalysis") -> str:
     latest_dev = ""
     if analysis.monthly_detail:
         last = analysis.monthly_detail[-1]
-        dev = last.get("dev_from_mean_pct", 0)
+        dev = last.get("dev_from_mean_pct") or 0
         latest_dev = (
             f" In the most recent billing cycle, consumption was "
             f"{abs(dev):.1f}% {'below' if dev < 0 else 'above'} the historical average."
@@ -168,8 +160,8 @@ def _template_explanation(analysis: "ConsumerAnalysis") -> str:
     mismatch_str = ""
     if analysis.reading_mismatch_count > 0:
         mismatch_str = (
-            f" Additionally, meter readings and billed units are inconsistent in "
-            f"{analysis.reading_mismatch_count} out of {analysis.num_bills} billing cycles "
+            f" Meter readings and billed units are inconsistent in "
+            f"{analysis.reading_mismatch_count} out of {analysis.num_bills} cycles "
             f"({analysis.reading_mismatch_pct:.1f}%), which requires verification."
         )
 
@@ -182,32 +174,17 @@ def _template_explanation(analysis: "ConsumerAnalysis") -> str:
     return (
         f"Consumer {analysis.consumer_id} (Meter: {analysis.meter_id}) is classified as "
         f"{analysis.risk_level} with a risk score of {analysis.risk_score}/100. "
-        f"The analysis detected the following anomalies: {flags_str}. "
-        f"Historical average consumption is {analysis.avg_consumption:.1f} units/month, "
-        f"and consumption shows {trend_str}.{latest_dev}{mismatch_str} "
-        f"The ML anomaly model assigned a score of {analysis.anomaly_score:.2f}/1.00. "
-        f"Recommended investigation priority: {priority}."
+        f"Anomalies detected: {flags_str}. "
+        f"Historical average: {analysis.avg_consumption:.1f} units/month, "
+        f"showing {trend_str}.{latest_dev}{mismatch_str} "
+        f"ML anomaly score: {analysis.anomaly_score:.2f}/1.00. "
+        f"Investigation priority: {priority}."
     )
 
 
-# ─── Public API ───────────────────────────────────────────────────────────────
-
-def generate_explanation(analysis: "ConsumerAnalysis") -> str:
-    """
-    Generate an XAI explanation for a consumer.
-    Uses Groq LLM if available, otherwise template fallback.
-    """
-    if ibm_available():
-        try:
-            prompt = _build_explanation_prompt(analysis)
-            return _call_groq(prompt, max_tokens=500)
-        except RuntimeError as exc:
-            print(f"[Groq] explanation error: {exc}")
-    return _template_explanation(analysis)
-
+# ─── Rich context builder ──────────────────────────────────────────────────────
 
 def _build_rich_context(analyses: list, summary_stats: dict) -> str:
-    """Build a rich JSON context with consumer details for LLM."""
     consumers_data = []
     for a in analyses:
         consumers_data.append({
@@ -219,7 +196,7 @@ def _build_rich_context(analyses: list, summary_stats: dict) -> str:
             "city_zone":          a.city_zone,
             "avg_consumption":    a.avg_consumption,
             "latest_consumption": a.latest_consumption,
-            "consumption_trend":  a.consumption_trend,
+            "consumption_trend":  round(a.consumption_trend, 2),
             "anomaly_flags":      [f.code for f in a.anomaly_flags],
             "anomaly_score":      round(a.anomaly_score, 3),
             "mismatch_count":     a.reading_mismatch_count,
@@ -232,109 +209,96 @@ def _build_rich_context(analyses: list, summary_stats: dict) -> str:
     }, indent=2)
 
 
+# ─── Public API ────────────────────────────────────────────────────────────────
+
+def generate_explanation(analysis: "ConsumerAnalysis") -> str:
+    if ibm_available():
+        try:
+            return _call_llm(_build_explanation_prompt(analysis), max_tokens=500)
+        except RuntimeError as exc:
+            print(f"[Gemini] explanation error: {exc}")
+    return _template_explanation(analysis)
+
+
 def agent_query(
     user_query: str,
     analyses: list["ConsumerAnalysis"],
     summary_stats: dict,
 ) -> str:
-    """
-    Fully conversational AI agent — sends every query to Groq with full dataset context.
-    No fixed patterns, no routing — Groq answers anything.
-    """
+    """Fully conversational — every query goes to Gemini with full dataset."""
     if ibm_available():
         try:
             ctx = _build_rich_context(analyses, summary_stats)
             prompt = _build_agent_prompt(user_query, ctx)
-            return _call_groq(prompt, max_tokens=800)
+            return _call_llm(prompt, max_tokens=800)
         except RuntimeError as exc:
-            print(f"[Groq] agent error: {exc}")
-            # On API error, try deterministic fallback
+            print(f"[Gemini] agent error: {exc}")
             return _deterministic_agent_router(user_query, analyses, summary_stats) or \
-                f"Sorry, I ran into an issue: {exc}. Please try again."
+                f"Sorry, ran into an issue: {exc}. Please try again."
 
-    # No Groq key — use deterministic fallback
     result = _deterministic_agent_router(user_query, analyses, summary_stats)
     return result or (
-        "AI Agent is in template mode (no Groq API key). "
-        "Try: 'top suspicious', 'overall summary', 'why is C102 flagged', "
-        "'consumption drops', or 'meter mismatches'."
+        "AI Agent is in template mode (no API key configured). "
+        "Try: 'top suspicious consumers', 'overall summary', 'why is C102 flagged'."
     )
 
 
 def _deterministic_agent_router(
     query: str,
-    analyses: list["ConsumerAnalysis"],
+    analyses: list,
     summary_stats: dict,
 ) -> str | None:
-    """Route well-known query patterns to deterministic answers."""
     q = query.lower()
 
-    # ── Top N suspicious / high risk ─────────────────────────────────────────
     if any(kw in q for kw in ["top", "highest risk", "most suspicious", "fraud report", "summarize"]):
         flagged = [a for a in analyses if a.risk_level in ("High Risk", "Suspicious")][:10]
         if not flagged:
-            return "No suspicious consumers found in the current dataset."
-        lines = [f"**Top {len(flagged)} flagged consumers:**"]
+            return "No suspicious consumers found."
+        lines = [f"Top {len(flagged)} flagged consumers:"]
         for a in flagged:
             flags = ", ".join(f.code for f in a.anomaly_flags) or "None"
-            lines.append(
-                f"• {a.consumer_id} (Score: {a.risk_score}/100, Level: {a.risk_level}) "
-                f"— Flags: {flags}"
-            )
+            lines.append(f"• {a.consumer_id} (Score: {a.risk_score}/100, {a.risk_level}) — {flags}")
         return "\n".join(lines)
 
-    # ── Why is C### flagged ───────────────────────────────────────────────────
     cid_match = re.search(r"c\d+", q)
     if cid_match:
         cid = cid_match.group(0).upper()
         found = next((a for a in analyses if a.consumer_id.upper() == cid), None)
         if found:
             return generate_explanation(found)
-        return f"Consumer {cid} was not found in the current dataset."
+        return f"Consumer {cid} not found."
 
-    # ── Sudden drop / low consumption ────────────────────────────────────────
     if "drop" in q or "decrease" in q or "low consumption" in q:
-        dropped = [
-            a for a in analyses
-            if any(f.code in ("SUDDEN_DROP", "ZERO_CONSUMPTION", "REPEATED_LOW")
-                   for f in a.anomaly_flags)
-        ]
+        dropped = [a for a in analyses if any(
+            f.code in ("SUDDEN_DROP", "ZERO_CONSUMPTION", "REPEATED_LOW") for f in a.anomaly_flags
+        )]
         if not dropped:
-            return "No consumers with sudden consumption drops detected."
-        lines = [f"**{len(dropped)} consumers with consumption drop anomalies:**"]
+            return "No consumption drop anomalies detected."
+        lines = [f"{len(dropped)} consumers with consumption drops:"]
         for a in dropped[:15]:
-            lines.append(
-                f"• {a.consumer_id} — Avg: {a.avg_consumption:.1f} units, "
-                f"Latest: {a.latest_consumption:.1f} units (Score: {a.risk_score}/100)"
-            )
+            lines.append(f"• {a.consumer_id} — Avg: {a.avg_consumption:.1f}, Latest: {a.latest_consumption:.1f} (Score: {a.risk_score}/100)")
         return "\n".join(lines)
 
-    # ── Meter / billed unit mismatch ─────────────────────────────────────────
-    if "mismatch" in q or "meter reading" in q or "billed unit" in q:
-        mismatched = [a for a in analyses if a.reading_mismatch_count > 0]
-        if not mismatched:
-            return "No meter reading / billed unit mismatches found."
-        lines = [f"**{len(mismatched)} consumers with meter/billing mismatches:**"]
-        for a in mismatched[:15]:
-            lines.append(
-                f"• {a.consumer_id} — {a.reading_mismatch_count}/{a.num_bills} cycles "
-                f"({a.reading_mismatch_pct:.1f}%) — Risk: {a.risk_level}"
-            )
+    if "mismatch" in q or "meter" in q or "billed unit" in q:
+        mm = [a for a in analyses if a.reading_mismatch_count > 0]
+        if not mm:
+            return "No meter/billing mismatches found."
+        lines = [f"{len(mm)} consumers with mismatches:"]
+        for a in mm[:15]:
+            lines.append(f"• {a.consumer_id} — {a.reading_mismatch_count}/{a.num_bills} cycles — {a.risk_level}")
         return "\n".join(lines)
 
-    # ── Overall summary ───────────────────────────────────────────────────────
     if any(kw in q for kw in ["overall", "summary", "dataset", "how many", "total"]):
         s = summary_stats
         return (
-            f"**Dataset Summary:**\n"
-            f"• Total consumers analysed: {s.get('total_consumers', 0)}\n"
-            f"• Total bills analysed: {s.get('total_bills', 0)}\n"
+            f"Dataset Summary:\n"
+            f"• Total consumers: {s.get('total_consumers', 0)}\n"
+            f"• Total bills: {s.get('total_bills', 0)}\n"
             f"• Normal: {s.get('normal_consumers', 0)}\n"
             f"• Low Risk: {s.get('low_risk_consumers', 0)}\n"
             f"• Suspicious: {s.get('suspicious_consumers', 0)}\n"
             f"• High Risk: {s.get('high_risk_consumers', 0)}\n"
-            f"• Meter/billing mismatches: {s.get('mismatch_consumers', 0)} consumers\n"
-            f"• Average risk score: {s.get('avg_risk_score', 0)}/100"
+            f"• Avg risk score: {s.get('avg_risk_score', 0)}/100"
         )
 
-    return None  # No deterministic match → LLM handles it
+    return None
