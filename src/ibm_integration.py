@@ -20,9 +20,6 @@ if TYPE_CHECKING:
 GROQ_API_URL  = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL    = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-_groq_ok: bool | None = None   # None = not tested yet
-
-
 def _get_groq_key() -> str | None:
     """Always read fresh from environment — never cache."""
     return os.getenv("GROQ_API_KEY", "").strip() or None
@@ -31,23 +28,10 @@ def _get_groq_key() -> str | None:
 def ibm_available() -> bool:
     """
     Named 'ibm_available' for API compatibility.
-    Returns True when the Groq key is set and the endpoint is reachable.
+    Returns True when the Groq key is present in environment.
+    No connectivity pre-check — key presence is sufficient.
     """
-    global _groq_ok
-    key = _get_groq_key()
-    if not key:
-        _groq_ok = False
-        return False
-    # Only test once per process startup
-    if _groq_ok is not None:
-        return _groq_ok
-    try:
-        _call_groq("Say OK", max_tokens=5)
-        _groq_ok = True
-    except Exception as e:
-        print(f"[Groq] connectivity check failed: {e}")
-        _groq_ok = False
-    return _groq_ok
+    return _get_groq_key() is not None
 
 
 def _call_groq(prompt: str, max_tokens: int = 600) -> str:
