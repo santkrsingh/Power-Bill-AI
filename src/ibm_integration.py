@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 # ─── Gemini client ─────────────────────────────────────────────────────────────
 
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
 
 
 def _get_key() -> str | None:
