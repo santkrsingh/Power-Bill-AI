@@ -130,25 +130,30 @@ Begin directly with: "Consumer {analysis.consumer_id} is classified as..."
 
 
 def _build_agent_prompt(user_query: str, context_json: str) -> str:
-    return f"""You are PowerGuard AI, an intelligent electricity fraud detection assistant.
-You help electricity distribution company investigators analyze billing data and identify suspicious consumers.
-Always be professional, factual, and never accuse — use terms like "suspicious", "anomaly", "requires investigation".
+    return f"""You are PowerGuard AI — a smart, conversational AI assistant for electricity billing fraud detection.
 
-You have access to the full dataset including all consumer IDs, risk scores, risk levels, anomaly flags,
-consumption data, meter mismatches, and summary statistics. Answer any question about the data.
+You have FULL access to the electricity billing dataset below. You can answer ANY question about it:
+- Which consumers are risky or safe
+- Comparisons between consumers
+- Zone-wise or type-wise analysis
+- Counts, averages, trends
+- Specific consumer details
+- Recommendations
+- Anything else the user asks
 
-Current Dataset (JSON):
+Dataset (full details of all consumers):
 {context_json}
 
-User Query: {user_query}
+User's question: {user_query}
 
-Instructions:
-- Answer the question directly using the data provided above
-- If listing consumers, use bullet points with relevant details
-- For comparisons, use actual numbers from the data
-- For specific consumers, mention their risk score, level, and flags
-- Keep response clear and concise (4-10 sentences or a list)
-- Never say you cannot access the data — the full data is given above
+Rules:
+- Answer naturally like a helpful AI assistant — not robotic
+- Use the actual data/numbers from the dataset above
+- Use bullet points when listing multiple items
+- Never say "I don't have access" or "I can't answer" — you have full data above
+- Never confirm fraud — say "suspicious", "anomaly", "requires investigation"
+- If user asks in Hindi or mixed language, reply in the same language
+- Be conversational, helpful, and precise
 """
 
 
@@ -246,27 +251,26 @@ def agent_query(
     summary_stats: dict,
 ) -> str:
     """
-    Process a natural-language agent query.
-    Always sends to Groq LLM with full context when available.
-    Falls back to deterministic router, then generic message.
+    Fully conversational AI agent — sends every query to Groq with full dataset context.
+    No fixed patterns, no routing — Groq answers anything.
     """
-    # Always try Groq first with full rich context
     if ibm_available():
         try:
             ctx = _build_rich_context(analyses, summary_stats)
             prompt = _build_agent_prompt(user_query, ctx)
-            return _call_groq(prompt, max_tokens=700)
+            return _call_groq(prompt, max_tokens=800)
         except RuntimeError as exc:
             print(f"[Groq] agent error: {exc}")
+            # On API error, try deterministic fallback
+            return _deterministic_agent_router(user_query, analyses, summary_stats) or \
+                f"Sorry, I ran into an issue: {exc}. Please try again."
 
-    # Fallback to deterministic router
-    deterministic_result = _deterministic_agent_router(user_query, analyses, summary_stats)
-    if deterministic_result:
-        return deterministic_result
-
-    return (
-        "I couldn't process that query with the current dataset. "
-        "Try asking about specific consumers, risk levels, or consumption patterns."
+    # No Groq key — use deterministic fallback
+    result = _deterministic_agent_router(user_query, analyses, summary_stats)
+    return result or (
+        "AI Agent is in template mode (no Groq API key). "
+        "Try: 'top suspicious', 'overall summary', 'why is C102 flagged', "
+        "'consumption drops', or 'meter mismatches'."
     )
 
 
