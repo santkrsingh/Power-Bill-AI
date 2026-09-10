@@ -53,9 +53,22 @@ def _flag_to_dict(f: AnomalyFlag) -> dict:
     return dataclasses.asdict(f)
 
 
+def _clean_nan(obj):
+    """Recursively replace NaN/Inf floats with None so JSON serialisation never breaks."""
+    if isinstance(obj, dict):
+        return {k: _clean_nan(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean_nan(i) for i in obj]
+    if isinstance(obj, float):
+        import math
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+    return obj
+
+
 def _analysis_to_dict(a: ConsumerAnalysis) -> dict:
     d = dataclasses.asdict(a)
-    return d
+    return _clean_nan(d)
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────

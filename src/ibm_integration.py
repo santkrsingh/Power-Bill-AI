@@ -1,72 +1,59 @@
 """
-PowerGuard AI – LLM Integration (Groq API)
-Uses Groq-hosted models (llama-3.3-70b-versatile) for NL explanations and agent responses.
-Falls back to template-based explanations when the Groq key is unavailable.
+PowerGuard AI – LLM Integration
+Uses Groq API for NL explanations and agent responses.
+Falls back to template-based explanations when unavailable.
 """
 
 from __future__ import annotations
 import os
 import json
 import re
-import urllib.request
-import urllib.error
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .analysis_engine import ConsumerAnalysis
 
-# ─── Groq client ──────────────────────────────────────────────────────────────
+# ─── LLM client ───────────────────────────────────────────────────────────────
 
-GROQ_API_URL  = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL    = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
 
 def _get_groq_key() -> str | None:
-    """Always read fresh from environment — never cache."""
     return os.getenv("GROQ_API_KEY", "").strip() or None
 
 
 def ibm_available() -> bool:
-    """
-    Named 'ibm_available' for API compatibility.
-    Returns True when the Groq key is present in environment.
-    No connectivity pre-check — key presence is sufficient.
-    """
     return _get_groq_key() is not None
 
 
 def _call_groq(prompt: str, max_tokens: int = 600) -> str:
-    """
-    Call Groq chat completions endpoint.
-    Returns generated text or raises RuntimeError.
-    """
+    """Call Groq using requests library with proper headers."""
     key = _get_groq_key()
     if not key:
         raise RuntimeError("GROQ_API_KEY not set.")
 
     model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    payload = json.dumps({
+    payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
         "temperature": 0.3,
-    }).encode()
+    }
 
-    req = urllib.request.Request(
-        GROQ_API_URL,
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-            return data["choices"][0]["message"]["content"].strip()
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode(errors="ignore")
-        raise RuntimeError(f"Groq HTTP {exc.code}: {body[:300]}") from exc
+        import requests as req_lib
+        resp = req_lib.post(
+            GROQ_API_URL,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "User-Agent": "PowerGuardAI/1.0",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception as exc:
         raise RuntimeError(f"Groq call failed: {exc}") from exc
 
