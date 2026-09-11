@@ -102,6 +102,23 @@ def login_page():
     return send_from_directory(app.static_folder, "login.html")
 
 
+@app.route("/sw.js")
+def service_worker():
+    return send_from_directory(app.static_folder, "sw.js",
+                               mimetype="application/javascript")
+
+
+@app.route("/manifest.json")
+def manifest():
+    return send_from_directory(app.static_folder, "manifest.json",
+                               mimetype="application/manifest+json")
+
+
+@app.route("/icons/<path:filename>")
+def icons(filename):
+    return send_from_directory(app.static_folder + "/icons", filename)
+
+
 @app.route("/api/login", methods=["POST"])
 def api_login():
     data = request.get_json(silent=True) or {}

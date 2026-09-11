@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PowerGuard AI – Electricity Fraud Detection</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#3b82f6" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PowerGuard" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ── Reset & Base ────────────────────────────────────────────── */
@@ -1079,6 +1089,15 @@ window.onload = async () => {
     }
   } catch(e) { /* backend not ready or unauthorized */ }
 };
+
+// ── Register Service Worker (PWA) ──────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(() => console.log('[PWA] Service Worker registered'))
+      .catch(e => console.warn('[PWA] SW registration failed:', e));
+  });
+}
 </script>
 </body>
 </html>
