@@ -803,16 +803,38 @@ async function loadConsumers() {
   const container = document.getElementById('consumersTable');
   container.innerHTML = '<div class="loading-full"><div class="spinner"></div></div>';
   try {
-    const url = `/api/consumers?page=1&limit=50${riskFilter ? '&risk='+encodeURIComponent(riskFilter) : ''}`;
+    // Fetch all consumers (up to 200) so client-side search works instantly
+    const url = `/api/consumers?page=1&limit=200${riskFilter ? '&risk='+encodeURIComponent(riskFilter) : ''}`;
     const r = await API.get(url);
     if (r.error) { container.innerHTML = `<div class="empty-state"><p>${r.error}</p></div>`; return; }
+    G.allConsumers = r.consumers;   // cache full list for search
     renderConsumersTable(r);
   } catch(e) {
     container.innerHTML = `<div class="empty-state"><p>Error: ${e.message}</p></div>`;
   }
 }
 
-function filterConsumers() { if (G.loaded) loadConsumers(); }
+function filterConsumers() {
+  // Reset search when filter changes
+  const searchEl = document.getElementById('consumerSearch');
+  if (searchEl) searchEl.value = '';
+  if (G.loaded) loadConsumers();
+}
+
+function searchConsumers() {
+  const query = document.getElementById('consumerSearch').value.trim().toLowerCase();
+  if (!G.allConsumers.length) { loadConsumers(); return; }
+  const filtered = query
+    ? G.allConsumers.filter(c =>
+        c.consumer_id.toLowerCase().includes(query) ||
+        c.meter_id.toLowerCase().includes(query) ||
+        (c.city_zone || '').toLowerCase().includes(query) ||
+        (c.consumer_type || '').toLowerCase().replace(/_/g,' ').includes(query) ||
+        (c.risk_level || '').toLowerCase().includes(query)
+      )
+    : G.allConsumers;
+  renderConsumersTable({ consumers: filtered, total: filtered.length });
+}
 
 function renderConsumersTable(data) {
   const { consumers, total } = data;
@@ -1029,19 +1051,33 @@ async function loadQualityReport() {
 }
 
 /* ───── Init ────────────────────────────────────────────────────────────── */
+/* ───── Logout ──────────────────────────────────────────────────────────── */
+async function logout() {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch(e) {}
+  window.location.href = '/login';
+}
+
+/* ───── Init ────────────────────────────────────────────────────────────── */
 window.onload = async () => {
   checkIBMStatus();
   setInterval(checkIBMStatus, 30000);
-  // Check if backend already has data
+
+  // Show logged-in username in sidebar
   try {
     const s = await API.get('/api/status');
+    if (s.username) {
+      const el = document.getElementById('loggedInUser');
+      if (el) el.textContent = 'Logged in as: ' + s.username;
+    }
     if (s.data_loaded) {
       G.loaded = true;
       const summary = await API.get('/api/summary');
       G.summary = summary;
       renderDashboard(summary);
     }
-  } catch(e) { /* backend not ready */ }
+  } catch(e) { /* backend not ready or unauthorized */ }
 };
 </script>
 </body>
